@@ -10,6 +10,8 @@ HUGE respect to Kornia and the team for their briliant implemetation of Canny al
 ## Results:
 
 ## References:
-[1] Wittmann, J., & Herl, G. (2023). Canny-Net: Known Operator Learning for Edge Detection. 12th Conference on Industrial Computed Tomography (iCT) 2023, 27 February - 2 March 2023 in Fürth, Germany. e-Journal of Nondestructive Testing Vol. 28(3). https://doi.org/10.58286/27751
-[2] https://discuss.pytorch.org/t/trying-to-train-parameters-of-the-canny-edge-detection-algorithm/154517
+[1] Wittmann, J., & Herl, G. (2023). Canny-Net: Known Operator Learning for Edge Detection. 12th Conference on Industrial Computed Tomography (iCT) 2023, 27 February - 2 March 2023 in Fürth, Germany. e-Journal of Nondestructive Testing Vol. 28(3). https://doi.org/10.58286/27751 
+
+[2] https://discuss.pytorch.org/t/trying-to-train-parameters-of-the-canny-edge-detection-algorithm/154517 
+
 [3] https://kornia.readthedocs.io/en/latest/_modules/kornia/filters/canny.html#canny
