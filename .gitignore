@@ -4,6 +4,13 @@ model_tf
 __pycache__
 *ipynb
 midv500_data
+data
+BIPED
+ckpt
+ckpt_w_hystersis
+lightning_logs
+wandb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

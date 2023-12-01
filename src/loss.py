@@ -7,13 +7,13 @@ from typing import Union, Iterable, Dict
 def bdcn_loss2(inputs: Tensor, targets: Tensor, l_weight=1.1, reduction = None):
     # bdcn loss modified in DexiNed
 
-    targets = targets.long()
+    # targets = targets.long()
     mask = targets.float()
-    num_positive = torch.sum((mask > 0.0).float()).float() # >0.1
-    num_negative = torch.sum((mask <= 0.0).float()).float() # <= 0.1
+    num_positive = torch.sum((mask > 0.5).float()).float() # >0.1
+    num_negative = torch.sum((mask <= 0.5).float()).float() # <= 0.1
 
-    mask[mask > 0.] = 1.0 * num_negative / (num_positive + num_negative) #0.1
-    mask[mask <= 0.] = 1.1 * num_positive / (num_positive + num_negative)  # before mask[mask <= 0.1]
+    mask[mask > 0.5] = 1.0 * num_negative / (num_positive + num_negative) #0.1
+    mask[mask <= 0.5] = 1.1 * num_positive / (num_positive + num_negative)  # before mask[mask <= 0.1]
     # inputs= torch.sigmoid(inputs)
     # cost = torch.nn.BCELoss(mask, reduction='none')(inputs, targets.float())
     cost = F.binary_cross_entropy(input= inputs, target= targets.float(), weight= mask, reduction= 'none')
@@ -82,7 +82,7 @@ def textureloss(prediction, label, mask_radius, reduction):
     return ops(loss)
 
 
-def tracingloss(prediction, label, tex_factor=0., bdr_factor=0., balanced_w=1.1, reduction: Union[None, str] = 'mean'):
+def tracingloss(prediction, label, tex_factor=0., bdr_factor=0., bdcn_factor=0.,  balanced_w=1.1, reduction: Union[None, str] = 'mean'):
     label = label.float()
     prediction = prediction.float()
 
@@ -112,23 +112,24 @@ def tracingloss(prediction, label, tex_factor=0., bdr_factor=0., balanced_w=1.1,
 
     bdrcost = bdrloss(prediction.float(),label_w.float(), radius=2, reduction = reduction)
 
-    bdcncost = bdcn_loss2(prediction.float(),label_w.float(), l_weight=1.1, reduction = reduction)
+    # bdcncost = bdcn_loss2(prediction.float(),label_w.float(), l_weight=1.1, reduction = reduction)
 
-    return cost + bdr_factor*bdrcost + tex_factor*textcost + bdcncost
+    return cost + bdr_factor*bdrcost + tex_factor*textcost
 
 
 class TracingLoss(torch.nn.Module):
-    def __init__(self, tex_factor=0., bdr_factor=0., balanced_w=1.1, reduction = "mean") -> None:
+    def __init__(self, tex_factor=0., bdr_factor=0., bdcn_factor = 0.2, balanced_w=1.1, reduction = "mean") -> None:
         super().__init__()
         assert reduction in ["mean", "sum", "none", None]
         self.tex_factor= tex_factor
         self.bdr_factor= bdr_factor
+        self.bdcn_factor = bdcn_factor
         self.balanced = balanced_w
         self.reduction = reduction if reduction in ["mean", "sum"] else None
 
     def forward(self, predictions: Union[Dict, Iterable[Tensor], Tensor], targets: Tensor) -> Tensor:
         if isinstance(predictions, torch.Tensor):
-            return tracingloss(predictions, targets, self.tex_factor, self.bdr_factor, self.balanced, self.reduction)
+            return tracingloss(predictions, targets, self.tex_factor, self.bdr_factor, self.bdcn_factor, self.balanced, self.reduction)
         else:
             losses = []
             try:
@@ -137,7 +138,7 @@ class TracingLoss(torch.nn.Module):
             finally:
                 for prediction in predictions:
                     local_prediction = F.interpolate(prediction, size= targets.shape[-2:])
-                    losses.append(tracingloss(local_prediction, targets, self.tex_factor, self.bdr_factor, self.balanced, "mean"))
+                    losses.append(tracingloss(local_prediction, targets, self.tex_factor, self.bdr_factor, self.bdcn_factor, self.balanced, "mean"))
             
             return torch.stack(losses).mean()
     

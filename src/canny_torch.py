@@ -15,9 +15,10 @@ from torch import Tensor
 class GaussConv2d(nn.Conv2d):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: _size_2_t, mu = 0, sigma = 1, stride: _size_2_t = 1, padding: _size_2_t | str = 0, dilation: _size_2_t = 1, groups: int = 1, bias: bool = True, padding_mode: str = 'zeros', normalize = True, device=None, dtype=None) -> None:
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, padding_mode, device, dtype)
-        self.weight.data = torch.zeros_like(self.weight.data)
-        weight_shape = self.weight.shape
-        self.gauss_weight = nn.Parameter(self.get_gaussian_kernel(weight_shape[1], weight_shape[0], kernel_size, mu, sigma, normalize), requires_grad= False)
+        with torch.no_grad():
+            self.weight[:] = torch.zeros_like(self.weight.data)
+            weight_shape = self.weight.shape
+            self.gauss_weight = nn.Parameter(self.get_gaussian_kernel(weight_shape[1], weight_shape[0], kernel_size, mu, sigma, normalize), requires_grad= False)
 
     def forward(self, x: Tensor):
         weight = self.weight + self.gauss_weight
@@ -41,13 +42,16 @@ class GaussConv2d(nn.Conv2d):
         gaussian_2D = gaussian_2D.expand(out_channels, in_channels, k, k)
         return gaussian_2D
     
+
+    
 class SobelConv2d(nn.Conv2d):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: _size_2_t, stride: _size_2_t = 1, padding: _size_2_t | str = 0, dilation: _size_2_t = 1, groups: int = 1, bias: bool = True, transpose = False, padding_mode: str = 'zeros', device=None, dtype=None) -> None:
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, padding_mode, device, dtype)
-        self.weight.data = torch.zeros_like(self.weight.data)
-        self.transpose = transpose
-        weight_shape = self.weight.shape
-        self.sobel_weight = nn.Parameter(self.get_sobel_kernel(weight_shape[1], weight_shape[0], kernel_size, transpose), requires_grad= False)
+        with torch.no_grad():
+            self.weight[:] = torch.zeros_like(self.weight.data)
+            self.transpose = transpose
+            weight_shape = self.weight.shape
+            self.sobel_weight = nn.Parameter(self.get_sobel_kernel(weight_shape[1], weight_shape[0], kernel_size, transpose), requires_grad= False)
 
     def forward(self, x: Tensor):
         weight = self.weight + self.sobel_weight
@@ -77,20 +81,22 @@ class PermuteConv2d(nn.Conv2d):
     
 class NMSConv2d(nn.Conv2d):
     def __init__(self, in_channels: int, device=None, dtype=None) -> None:
-        super().__init__(in_channels, out_channels= 8*in_channels, kernel_size= 3, stride= 1, padding= 1, dilation= 1, groups= 1, bias= False, padding_mode= 'zeros', device=device, dtype=dtype)
+        super().__init__(in_channels, out_channels= 8*in_channels, kernel_size= 3, stride= 1, padding= 1, dilation= 1, groups= in_channels, bias= False, padding_mode= 'zeros', device=device, dtype=dtype)
         canny_nms = torch.tensor([
-                    [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],
-                    [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]]],
-                    [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]]],
-                    [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]],
-                    [[[0.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
-                    [[[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
-                    [[[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
-                    [[[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
                 ])
-        nms_kernels = nn.Parameter(torch.cat([torch.cat([canny_nms]*self.in_channels, dim= 0)]*(self.in_channels // self.groups), dim= 1),
+        
+        nms_kernels = nn.Parameter(torch.stack([torch.cat([canny_nms]*self.in_channels, dim= 0)]*(self.in_channels // self.groups), dim= 1),
                 requires_grad= False)
         self.weight = nms_kernels
+        
 
 class HystersisConv2d(nn.Conv2d):
     def __init__(self, device=None, dtype=None) -> None:
@@ -98,18 +104,29 @@ class HystersisConv2d(nn.Conv2d):
         hyst_kernel = torch.ones((1,1, 3,3), requires_grad= False).add(0.25)
         self.weight = nn.Parameter(hyst_kernel, requires_grad= False)
 
+class MergeConv(nn.Conv2d):
+    def __init__(self, in_channels: int, device=None, dtype=None) -> None:
+        super().__init__(in_channels, out_channels = 1, kernel_size = 1, stride = 1, padding =0, dilation=1, groups=1, bias=False, padding_mode='zeros', device=device, dtype=dtype)
+        with torch.no_grad():
+            self.weight[:] = torch.rand_like(self.weight)
+
+    def forward(self, x):
+        weight = torch.softmax(self.weight, dim= 0)
+        return torch.clamp(F.conv2d(x, weight= weight, bias = self.bias, stride= self.stride, padding= self.padding, dilation= self.dilation, groups= self.groups), 0., 1.) 
+
 
 class CannyDetector(nn.Module):
     '''
     Trainable Canny Edge Detector followed https://discuss.pytorch.org/t/trying-to-train-parameters-of-the-canny-edge-detection-algorithm/154517 implementation.\n
     Modified to support any input channels (not just only 1) and add a support for arbitrary number of hidden channels. This model will have much higher flexibility 
     compared to the OP.\n
-    Non-maximal suppression is taken from Kornia implementation https://kornia.readthedocs.io/en/latest/_modules/kornia/filters/canny.html#canny .\n
+    Non-maximum suppression is taken from Kornia implementation https://kornia.readthedocs.io/en/latest/_modules/kornia/filters/canny.html#canny .\n
     Notes:
-    - Due to atan2 operator cannot export to TFLite without extending default operators set, I approximate this function by a tanh and a dereived sigmoid function,
+    - Due to atan2 operator cannot export to TFLite without extending default operators set (the tf:Atan operator), I approximate this function by a tanh and a dereived sigmoid function,
       which is well-supported as popular activation functions. 
-    - The average error I get is around 0.0041 rad which is acceptable in my case, you can fallback to torch.atan2() if you don't need to export the model to TFLite 
+    - The maximum error I get is around 0.028 rad which is acceptable in my case, you can fallback to torch.atan2() if you don't need to export the model to TFLite 
       format. 
+    - Hysteresis edge tracking is disabled for its recursive fact.
     '''
     def __init__(self,
                  in_channels=3,
@@ -168,50 +185,14 @@ class CannyDetector(nn.Module):
         # Hysteresis custom kernel
         self.conv_hystersis = HystersisConv2d()
 
-        self.conv_merge = nn.Conv2d(in_channels= self.hidden_channels,
-                                    out_channels= 1,
-                                    kernel_size= 1,
-                                    bias= False)
+        self.conv_merge = MergeConv(in_channels= self.hidden_channels)
 
         # Threshold parameters
         self.lowThreshold  = nn.Parameter(torch.ones(self.hidden_channels,1,1).mul(0.10), requires_grad=True)
         self.highThreshold = nn.Parameter(torch.ones(self.hidden_channels,1,1).mul(0.20), requires_grad=True)
 
         self.conv_nms = NMSConv2d(in_channels= self.hidden_channels)
-        
-
-
-    def get_gaussian_kernel(self, in_channels, out_channels, k=3, mu=0, sigma=1, normalize=True):
-        # compute 1 dimension gaussian
-        gaussian_1D = np.linspace(-1, 1, k)
-        # compute a grid distance from center
-        x, y = np.meshgrid(gaussian_1D, gaussian_1D)
-        distance = (x ** 2 + y ** 2) ** 0.5
-        # compute the 2 dimension gaussian
-        gaussian_2D = np.exp(-(distance - mu) ** 2 / (2 * sigma ** 2))
-        gaussian_2D = gaussian_2D / (2 * np.pi * sigma ** 2)
-
-        # normalize part (mathematically)
-        if normalize:
-            gaussian_2D = gaussian_2D / np.sum(gaussian_2D)
-        
-        gaussian_2D = torch.from_numpy(gaussian_2D).float().unsqueeze(0).unsqueeze(0)
-        gaussian_2D = gaussian_2D.expand(out_channels, in_channels, k, k)
-        return gaussian_2D
-
-    def get_sobel_kernel(self, in_channels, out_channels, k=3):
-        # get range
-        range = np.linspace(-(k // 2), k // 2, k)
-        # compute a grid the numerator and the axis-distances
-        x, y = np.meshgrid(range, range)
-        sobel_2D_numerator = x
-        sobel_2D_denominator = (x ** 2 + y ** 2)
-        sobel_2D_denominator[:, k // 2] = 1  # avoid division by zero
-        sobel_2D = sobel_2D_numerator / sobel_2D_denominator
-
-        sobel_2D = torch.from_numpy(sobel_2D).float().unsqueeze(0).unsqueeze(0)
-        sobel_2D = sobel_2D.expand(out_channels, in_channels, k, k)
-        return sobel_2D
+    
 
     def threshold(self, img):
         """ Thresholds for defining weak and strong edge pixels """
@@ -233,21 +214,19 @@ class CannyDetector(nn.Module):
         # Create image that has strong pixels remain at one, weak pixels become zero
         img_strong = (img == 1.).clone()*img
         # Create masked image that turns all weak pixel into ones, rest to zeros
-        masked_img = (img == 0.5).clone()
+        masked_img = (img == 0.5).clone()*2.
         # Calculate weak edges that are changed to strong edges + Add changed edges to already good edges
         changed_edges = (self.conv_hystersis(img_strong) > 1)*masked_img*img + img_strong
 
         return changed_edges
 
-    def non_maximal_suppression(self, sobel_x, sobel_y, magnitude = None):
+    def non_maximal_suppression(self, sobel_x, sobel_y):
         # Kornia elegant implementation of non_maxiaml_suppression with high speed
         # https://kornia.readthedocs.io/en/latest/_modules/kornia/filters/canny.html#canny
 
         # Non-maximal suppression
+        magnitude = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
         nms_magnitude: Tensor = self.conv_nms(magnitude)
-
-        if magnitude is None:
-            magnitude = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
 
         # By MinhNH: Approximate arctan by tanh function and symmetrical error function to reduce computational cost and able to export to TFLite
         diff = (sobel_y + self.eps)/(sobel_x + self.eps)
@@ -300,22 +279,45 @@ class CannyDetector(nn.Module):
         sobel_y = self.conv_permute_sobel_y(sobel_y)
         # Magnitude and angles
         
-        grad_magnitude = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
-
-
+        # grad_magnitude = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
 
         # Non-max-suppression
-        thin_edges = self.non_maximal_suppression(sobel_x, sobel_y, grad_magnitude)
-        # thin_edges = grad_magnitude
+        # if not self.training:
+        #     thin_edges = self.non_maximal_suppression(sobel_x, sobel_y)
+        # else:
+        #     thin_edges = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
 
+        thin_edges = self.non_maximal_suppression(sobel_x, sobel_y)
+        # thin_edges = torch.sqrt(torch.pow(sobel_x + self.eps, 2) + torch.pow(sobel_y + self.eps, 2))
 
         # Double threshold
         thin_edges = thin_edges / torch.max(thin_edges)
         thresh = self.threshold(thin_edges)
 
-        thresh = self.conv_merge(thresh)
+        result = self.conv_merge(thresh)
         # Hysteresis
-        result = self.hysteresis(thresh)
+        # result = self.hysteresis(result)
 
         return result
 
+def onnx_atan2(y: torch.Tensor, x: torch.Tensor):
+    # Create a pi tensor with the same device and data type as y
+    pi = torch.tensor(np.pi, device=y.device, dtype=y.dtype)
+    half_pi = pi / 2
+
+    # Compute the arctangent of y/x
+    ans = torch.atan(y / x)
+
+    # Create boolean tensors representing positive, negative, and zero values of y and x
+    y_positive = y > 0
+    y_negative = y < 0
+    x_negative = x < 0
+    x_zero = x == 0
+
+    # Adjust ans based on the positive, negative, and zero values of y and x
+    ans += torch.where(y_positive & x_negative, pi, torch.zeros_like(ans))  # Quadrants I and II
+    ans -= torch.where(y_negative & x_negative, pi, torch.zeros_like(ans))  # Quadrants III and IV
+    ans = torch.where(y_positive & x_zero, half_pi, ans)  # Positive y-axis
+    ans = torch.where(y_negative & x_zero, -half_pi, ans)  # Negative y-axis
+
+    return ans
